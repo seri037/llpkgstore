@@ -1,4 +1,4 @@
-package cmd
+package internal
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "llpkg",
+	Use:   "llpkgstore",
 	Short: "A tool that integrates llpkg-related functionality",
 	Long: `This application is a tool that integrates llpkg-related functionality,
 such as binary installation, configuration file parsing, etc.
