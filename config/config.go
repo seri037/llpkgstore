@@ -10,12 +10,12 @@ import (
 var ValidInstallers = []string{"conan"}
 
 type LLpkgConfig struct {
-	UpstreamConfig UpstreamConfig `json:"upstream"`
+	Upstream UpstreamConfig `json:"upstream"`
 }
 
 type UpstreamConfig struct {
-	InstallerConfig InstallerConfig `json:"installer"`
-	PackageConfig   PackageConfig   `json:"package"`
+	Installer InstallerConfig `json:"installer"`
+	Package   PackageConfig   `json:"package"`
 }
 
 type InstallerConfig struct {
@@ -29,13 +29,13 @@ type PackageConfig struct {
 }
 
 func NewUpstreamFromConfig(upstreamConfig UpstreamConfig) (*upstream.Upstream, error) {
-	switch upstreamConfig.InstallerConfig.Name {
+	switch upstreamConfig.Installer.Name {
 	case "conan":
-		return upstream.NewUpstream(conan.NewConanInstaller(upstreamConfig.InstallerConfig.Config), upstream.Package{
-			Name:    upstreamConfig.PackageConfig.Name,
-			Version: upstreamConfig.PackageConfig.Version,
+		return upstream.NewUpstream(conan.NewConanInstaller(upstreamConfig.Installer.Config), upstream.Package{
+			Name:    upstreamConfig.Package.Name,
+			Version: upstreamConfig.Package.Version,
 		}), nil
 	default:
-		return nil, errors.New("unknown upstream installer: " + upstreamConfig.InstallerConfig.Name)
+		return nil, errors.New("unknown upstream installer: " + upstreamConfig.Installer.Name)
 	}
 }

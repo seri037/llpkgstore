@@ -27,8 +27,8 @@ func ParseLLpkgConfig(configPath string) (LLpkgConfig, error) {
 }
 
 func fillDefaults(config LLpkgConfig) LLpkgConfig {
-	if config.UpstreamConfig.InstallerConfig.Name == "" {
-		config.UpstreamConfig.InstallerConfig.Name = "conan"
+	if config.Upstream.Installer.Name == "" {
+		config.Upstream.Installer.Name = "conan"
 	}
 	return config
 }

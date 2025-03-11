@@ -6,23 +6,23 @@ import (
 )
 
 func ValidateLLpkgConfig(config LLpkgConfig) error {
-	return validateUpstreamConfig(config.UpstreamConfig)
+	return validateUpstreamConfig(config.Upstream)
 }
 
 func validateUpstreamConfig(config UpstreamConfig) error {
 	// 1. check if upstream installer is valid
-	if config.InstallerConfig.Name == "" {
+	if config.Installer.Name == "" {
 		return fmt.Errorf("invalid configuration: upstream.installer.name is required")
 	}
-	if !slices.Contains(ValidInstallers, config.InstallerConfig.Name) {
-		return fmt.Errorf("invalid configuration: upstream.installer.name %s is not supported", config.InstallerConfig.Name)
+	if !slices.Contains(ValidInstallers, config.Installer.Name) {
+		return fmt.Errorf("invalid configuration: upstream.installer.name %s is not supported", config.Installer.Name)
 	}
 
 	// 2. check if package is valid
-	if config.PackageConfig.Name == "" {
+	if config.Package.Name == "" {
 		return fmt.Errorf("invalid configuration: upstream.package.name is required")
 	}
-	if config.PackageConfig.Version == "" {
+	if config.Package.Version == "" {
 		return fmt.Errorf("invalid configuration: upstream.package.version is required")
 	}
 
