@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-func ValidateLLpkgConfig(config LLpkgConfig) error {
+func ValidateLLPkgConfig(config LLPkgConfig) error {
 	return validateUpstreamConfig(config.Upstream)
 }
 

@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-func ParseLLpkgConfig(configPath string) (LLpkgConfig, error) {
-	var config LLpkgConfig
+func ParseLLPkgConfig(configPath string) (LLPkgConfig, error) {
+	var config LLPkgConfig
 	file, err := os.Open(configPath)
 	if err != nil {
 		return config, fmt.Errorf("failed to open config file: %w", err)
@@ -26,7 +26,7 @@ func ParseLLpkgConfig(configPath string) (LLpkgConfig, error) {
 	return config, nil
 }
 
-func fillDefaults(config LLpkgConfig) LLpkgConfig {
+func fillDefaults(config LLPkgConfig) LLPkgConfig {
 	if config.Upstream.Installer.Name == "" {
 		config.Upstream.Installer.Name = "conan"
 	}
