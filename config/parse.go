@@ -6,11 +6,13 @@ import (
 	"os"
 )
 
-// ParseLLPkgConfig parses an llpkg.cfg file and returns an LLPkgConfig struct.
+// ParseLLPkgConfig reads and parses the llpkg.cfg configuration file
+// Performs the following operations:
 //
-// It'll fill default values for missing fields.
-//
-// Returns an error if the file cannot be opened or decoded.
+// 1. Opens and reads the configuration file.
+// 2. Deserializes JSON content into LLPkgConfig struct.
+// 3. Applies default values for missing parameters.
+// 4. Returns parsed config or I/O/decoding errors.
 func ParseLLPkgConfig(configPath string) (LLPkgConfig, error) {
 	var config LLPkgConfig
 	file, err := os.Open(configPath)
@@ -31,9 +33,12 @@ func ParseLLPkgConfig(configPath string) (LLPkgConfig, error) {
 	return config, nil
 }
 
+// fillDefaults applies default configuration values when parameters are missing.
+// Current defaults:
+// - installer.name: Uses first valid installer type if unspecified.
 func fillDefaults(config LLPkgConfig) LLPkgConfig {
 	if config.Upstream.Installer.Name == "" {
-		config.Upstream.Installer.Name = "conan"
+		config.Upstream.Installer.Name = ValidInstallers[0]
 	}
 	return config
 }

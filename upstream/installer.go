@@ -1,10 +1,15 @@
 package upstream
 
-// An Installer can install and search binaries from a specific remote.
+// Installer represents a package installer that can download, install, and locate binaries from a remote repository.
+// It provides methods to install packages to specific directories and search for installed package information.
 type Installer interface {
 	Name() string
 	Config() map[string]string
-	// Installs a binary according to pkg, and stores the result (usually .pc files) in outputDir.
+	// Install downloads and installs the specified package.
+	// The outputDir is where build artifacts (e.g., .pc files, headers) are stored.
+	// Returns an error if installation fails.
 	Install(pkg Package, outputDir string) error
+	// Search checks remote repository for the specified package availability.
+	// Returns the search results text and any encountered errors.
 	Search(pkg Package) (string, error)
 }
