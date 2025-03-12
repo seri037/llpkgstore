@@ -9,7 +9,7 @@ import (
 
 var ValidInstallers = []string{"conan"}
 
-type LLpkgConfig struct {
+type LLPkgConfig struct {
 	Upstream UpstreamConfig `json:"upstream"`
 }
 
