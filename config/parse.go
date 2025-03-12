@@ -6,6 +6,11 @@ import (
 	"os"
 )
 
+// ParseLLPkgConfig parses an llpkg.cfg file and returns an LLPkgConfig struct.
+//
+// It'll fill default values for missing fields.
+//
+// Returns an error if the file cannot be opened or decoded.
 func ParseLLPkgConfig(configPath string) (LLPkgConfig, error) {
 	var config LLPkgConfig
 	file, err := os.Open(configPath)

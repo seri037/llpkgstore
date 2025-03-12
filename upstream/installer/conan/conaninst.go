@@ -21,10 +21,12 @@ const (
 	%s`
 )
 
+// An Installer that uses Conan to install a binary.
 type conanInstaller struct {
 	config map[string]string
 }
 
+// Create an Installer that uses Conan to install a binary.
 func NewConanInstaller(config map[string]string) upstream.Installer {
 	return &conanInstaller{
 		config: config,
