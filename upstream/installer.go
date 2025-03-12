@@ -5,6 +5,6 @@ type Installer interface {
 	Name() string
 	Config() map[string]string
 	// Installs a binary according to pkg, and stores the result (usually .pc files) in outputDir.
-	Install(pkg Package, dir string) error
+	Install(pkg Package, outputDir string) error
 	Search(pkg Package) (string, error)
 }

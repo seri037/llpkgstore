@@ -45,7 +45,7 @@ func (c *conanInstaller) options() string {
 	return strings.Join([]string{"\\*:shared=True", c.config["options"]}, " ")
 }
 
-func (c *conanInstaller) Install(pkg upstream.Package, dir string) error {
+func (c *conanInstaller) Install(pkg upstream.Package, outputDir string) error {
 	// Build the following command
 	// conan install --requires %s -g PkgConfigDeps --options \\*:shared=True --build=missing --output-folder=%s\
 	builder := cmdbuilder.NewCmdBuilder(cmdbuilder.WithConanSerilazier())
@@ -56,7 +56,7 @@ func (c *conanInstaller) Install(pkg upstream.Package, dir string) error {
 	builder.SetArg("generator", "PkgConfigDeps")
 	builder.SetArg("options", c.options())
 	builder.SetArg("build", "missing")
-	builder.SetArg("output-folder", dir)
+	builder.SetArg("output-folder", outputDir)
 
 	buildCmd := exec.Command(builder.Name(), append([]string{builder.Subcommand()}, builder.Args()...)...)
 
