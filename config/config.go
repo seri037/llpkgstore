@@ -31,10 +31,13 @@ type PackageConfig struct {
 func NewUpstreamFromConfig(upstreamConfig UpstreamConfig) (*upstream.Upstream, error) {
 	switch upstreamConfig.Installer.Name {
 	case "conan":
-		return upstream.NewUpstream(conan.NewConanInstaller(upstreamConfig.Installer.Config), upstream.Package{
-			Name:    upstreamConfig.Package.Name,
-			Version: upstreamConfig.Package.Version,
-		}), nil
+		return &upstream.Upstream{
+			Installer: conan.NewConanInstaller(upstreamConfig.Installer.Config),
+			Pkg: upstream.Package{
+				Name:    upstreamConfig.Package.Name,
+				Version: upstreamConfig.Package.Version,
+			},
+		}, nil
 	default:
 		return nil, errors.New("unknown upstream installer: " + upstreamConfig.Installer.Name)
 	}
