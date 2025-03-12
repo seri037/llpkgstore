@@ -5,6 +5,7 @@ import (
 	"slices"
 )
 
+// Check the validity of an LLPkgConfig
 func ValidateLLPkgConfig(config LLPkgConfig) error {
 	return validateUpstreamConfig(config.Upstream)
 }
