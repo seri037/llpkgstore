@@ -21,7 +21,7 @@ type CmdBuilder struct {
 func WithConanSerilazier() Options {
 	return func(cb *CmdBuilder) {
 		cb.serilazier = func(k, v string) string {
-			return fmt.Sprintf("--%s=%s", k, v)
+			return fmt.Sprintf("--%s=\"%s\"", k, v)
 		}
 	}
 }
