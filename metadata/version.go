@@ -208,6 +208,17 @@ func (m *metadataMgr) VersionMappingsByName(name string) ([]VersionMapping, erro
 	return versionMappings, nil
 }
 
+func (m *metadataMgr) allCachedVersionMappings() map[string][]VersionMapping {
+	allCachedMetadata := m.allCachedMetadata()
+
+	allVersionMappings := map[string][]VersionMapping{}
+	for name, info := range allCachedMetadata {
+		allVersionMappings[name] = info.VersionMappings
+	}
+
+	return allVersionMappings
+}
+
 // 辅助函数，确保语义版本号有前缀 "v"
 func ensureSemverPrefix(version string) string {
 	if len(version) > 0 && version[0] != 'v' {

@@ -152,14 +152,3 @@ func (m *metadataMgr) buildVersionsHash() error {
 
 	return nil
 }
-
-func (m *metadataMgr) allCachedVersionMappings() map[string][]VersionMapping {
-	allCachedMetadata := m.allCachedMetadata()
-
-	allVersionMappings := map[string][]VersionMapping{}
-	for name, info := range allCachedMetadata {
-		allVersionMappings[name] = info.VersionMappings
-	}
-
-	return allVersionMappings
-}
