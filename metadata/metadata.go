@@ -28,10 +28,6 @@ type VersionMapping struct {
 type metadataMgr struct {
 	cache *cache.Cache[MetadataMap]
 
-	// 保留原有的嵌套结构以兼容测试
-	cToGoVersionsMaps map[string]map[string][]string
-	goToCVersionMaps  map[string]map[string]string
-
 	// 新增扁平结构用于优化查询
 	flatCToGo map[string][]string // "name/cversion" -> []goversion
 	flatGoToC map[string]string   // "name/goversion" -> cversion
@@ -46,11 +42,9 @@ func NewMetadataMgr(cacheDir string) (*metadataMgr, error) {
 	}
 
 	mgr := &metadataMgr{
-		cache:             cache,
-		cToGoVersionsMaps: make(map[string]map[string][]string),
-		goToCVersionMaps:  make(map[string]map[string]string),
-		flatCToGo:         make(map[string][]string),
-		flatGoToC:         make(map[string]string),
+		cache:     cache,
+		flatCToGo: make(map[string][]string),
+		flatGoToC: make(map[string]string),
 	}
 
 	err = mgr.buildVersionsHash()
@@ -135,10 +129,6 @@ func (m *metadataMgr) update() error {
 }
 
 func (m *metadataMgr) buildVersionsHash() error {
-	// 重置嵌套哈希表
-	m.cToGoVersionsMaps = make(map[string]map[string][]string)
-	m.goToCVersionMaps = make(map[string]map[string]string)
-
 	// 重置扁平哈希表
 	m.flatCToGo = make(map[string][]string)
 	m.flatGoToC = make(map[string]string)
@@ -146,19 +136,8 @@ func (m *metadataMgr) buildVersionsHash() error {
 	allCachedVersionMappings := m.allCachedVersionMappings()
 
 	for name, versionMappings := range allCachedVersionMappings {
-		if m.cToGoVersionsMaps[name] == nil {
-			m.cToGoVersionsMaps[name] = make(map[string][]string)
-		}
-		if m.goToCVersionMaps[name] == nil {
-			m.goToCVersionMaps[name] = make(map[string]string)
-		}
 
 		for _, versionMapping := range versionMappings {
-			// 构建嵌套结构 (保持原有逻辑以支持测试)
-			m.cToGoVersionsMaps[name][versionMapping.CVersion] = versionMapping.GoVersions
-			for _, goVersion := range versionMapping.GoVersions {
-				m.goToCVersionMaps[name][goVersion] = versionMapping.CVersion
-			}
 
 			// 构建扁平结构 (用于优化查询)
 			cKey := name + "/" + versionMapping.CVersion
