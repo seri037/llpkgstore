@@ -8,24 +8,34 @@ import (
 
 // LatestMappedModuleVersion returns the latest mapped module version according to the C version
 func (m *metadataMgr) LatestMappedModuleVersion(name, cversion string) (string, error) {
-	cToGoVersions, ok := m.cToGoVersionsMaps[name]
-	if !ok {
-		return "", fmt.Errorf("no version mappings for %s", name)
-	}
+	// 使用扁平化结构进行查询 - 构建复合键
+	cKey := name + "/" + cversion
 
-	goVersions, ok := cToGoVersions[cversion]
+	// 直接从扁平哈希表中获取Go版本列表
+	goVersions, ok := m.flatCToGo[cKey]
 	if !ok {
-		return "", fmt.Errorf("no version mappings for %s %s", name, cversion)
+		// 如果没找到，尝试更新缓存
+		err := m.update()
+		if err != nil {
+			return "", err
+		}
+
+		// 再次查询
+		goVersions, ok = m.flatCToGo[cKey]
+		if !ok {
+			return "", fmt.Errorf("no version mappings for %s %s", name, cversion)
+		}
 	}
 
 	if len(goVersions) > 0 {
-		lastestGoVersion := goVersions[0]
+		// 找出语义版本最高的Go版本
+		latestGoVersion := goVersions[0]
 		for _, goVersion := range goVersions {
-			if semver.Compare(goVersion, lastestGoVersion) > 0 {
-				lastestGoVersion = goVersion
+			if semver.Compare(goVersion, latestGoVersion) > 0 {
+				latestGoVersion = goVersion
 			}
 		}
-		return lastestGoVersion, nil
+		return latestGoVersion, nil
 	}
 
 	return "", fmt.Errorf("no version mappings for %s %s", name, cversion)
@@ -33,17 +43,30 @@ func (m *metadataMgr) LatestMappedModuleVersion(name, cversion string) (string, 
 
 // MappedModuleVersions returns all mapped module versions according to the C version
 func (m *metadataMgr) MappedModuleVersions(name, cversion string) ([]string, error) {
-	cToGoVersions, ok := m.cToGoVersionsMaps[name]
+	// 使用扁平化结构进行查询 - 构建复合键
+	cKey := name + "/" + cversion
+
+	// 直接从扁平哈希表中获取Go版本列表
+	versions, ok := m.flatCToGo[cKey]
 	if !ok {
-		return nil, fmt.Errorf("no version mappings for %s", name)
+		// 如果没找到，尝试更新缓存
+		err := m.update()
+		if err != nil {
+			return nil, err
+		}
+
+		// 再次查询
+		versions, ok = m.flatCToGo[cKey]
+		if !ok {
+			return nil, fmt.Errorf("no version mappings for %s %s", name, cversion)
+		}
 	}
 
-	versions, ok := cToGoVersions[cversion]
-	if !ok {
-		return nil, fmt.Errorf("no version mappings for %s %s", name, cversion)
-	}
+	// 返回副本避免修改内部数据
+	result := make([]string, len(versions))
+	copy(result, versions)
 
-	return versions, nil
+	return result, nil
 }
 
 // AllCToGoVersions returns all version mappings in the format of Name -> CVersion -> GoVersions
@@ -135,39 +158,4 @@ func (m *metadataMgr) VersionMappingsByName(name string) ([]VersionMapping, erro
 	}
 
 	return versionMappings, nil
-}
-
-func (m *metadataMgr) allCachedVersionMappings() map[string][]VersionMapping {
-	allCachedMetadata := m.allCachedMetadata()
-
-	allVersionMappings := map[string][]VersionMapping{}
-	for name, info := range allCachedMetadata {
-		allVersionMappings[name] = info.VersionMappings
-	}
-
-	return allVersionMappings
-}
-
-func (m *metadataMgr) buildVersionsHash() error {
-	m.cToGoVersionsMaps = make(map[string]map[string][]string)
-	m.goToCVersionMaps = make(map[string]map[string]string)
-
-	allCachedVersionMappings := m.allCachedVersionMappings()
-
-	for name, versionMappings := range allCachedVersionMappings {
-		if m.cToGoVersionsMaps[name] == nil {
-			m.cToGoVersionsMaps[name] = make(map[string][]string)
-		}
-		if m.goToCVersionMaps[name] == nil {
-			m.goToCVersionMaps[name] = make(map[string]string)
-		}
-		for _, versionMapping := range versionMappings {
-			m.cToGoVersionsMaps[name][versionMapping.CVersion] = versionMapping.GoVersions
-			for _, goVersion := range versionMapping.GoVersions {
-				m.goToCVersionMaps[name][goVersion] = versionMapping.CVersion
-			}
-		}
-	}
-
-	return nil
 }
