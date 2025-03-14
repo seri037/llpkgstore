@@ -113,7 +113,7 @@ func (m *metadataMgr) cachedMetadataByName(name string) (Metadata, error) {
 }
 
 func (m *metadataMgr) update() error {
-	err := m.cache.Update()
+	_, err := m.cache.Update()
 	if err != nil {
 		return err
 	}
