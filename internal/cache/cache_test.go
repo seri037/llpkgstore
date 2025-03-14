@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,10 +96,9 @@ func TestCache_Fetch304(t *testing.T) {
 
 	// Set modTime to an old time
 	cache.modTime = time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
-	cache.modTime.Format(http.TimeFormat) // Ensure time format is correct
 
 	// Second fetch should return 304
-	err := cache.fetch()
+	_, err := cache.Update()
 	require.NoError(t, err)
 
 	// Validate data remains unchanged
@@ -115,4 +115,45 @@ func TestCache_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	_, err := NewCache[MockMetadataMap](filepath.Join(tmpDir, "cache.json"), server.URL)
 	require.Error(t, err) // Should return deserialization error
+}
+
+// Test concurrent updates and reads
+func TestCache_ConcurrentAccess(t *testing.T) {
+	var wg sync.WaitGroup
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Millisecond * 500)
+		json.NewEncoder(w).Encode(testMetadata)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "cache.json")
+
+	// Initialize cache
+	cache, err := NewCache[MockMetadataMap](cachePath, server.URL)
+	require.NoError(t, err)
+
+	// Concurrently update and read cache, reader if i%4 != 0, writer if i%4 == 0
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%4 != 0 {
+				_, _ = cache.Update()
+			} else {
+				_ = cache.Data()
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+
+	// Validate data
+	assert.Equal(t, testMetadata, cache.Data())
+
+	// Validate modTime
+	assert.True(t, time.Now().After(cache.modTime), "modTime should be updated after concurrent access")
+
+	return
 }
