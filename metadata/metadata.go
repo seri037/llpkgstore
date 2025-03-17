@@ -26,9 +26,11 @@ type VersionMapping struct {
 }
 
 type metadataMgr struct {
-	cache             *cache.Cache[MetadataMap]
-	cToGoVersionsMaps map[string]map[string][]string
-	goToCVersionMaps  map[string]map[string]string
+	cache *cache.Cache[MetadataMap]
+
+	// Add flat hash for optimization
+	flatCToGo map[string][]string // "name/cversion" -> []goversion
+	flatGoToC map[string]string   // "name/goversion" -> cversion
 }
 
 // NewMetadataMgr returns a new metadata manager
@@ -40,9 +42,9 @@ func NewMetadataMgr(cacheDir string) (*metadataMgr, error) {
 	}
 
 	mgr := &metadataMgr{
-		cache:             cache,
-		cToGoVersionsMaps: make(map[string]map[string][]string),
-		goToCVersionMaps:  make(map[string]map[string]string),
+		cache:     cache,
+		flatCToGo: make(map[string][]string),
+		flatGoToC: make(map[string]string),
 	}
 
 	err = mgr.buildVersionsHash()
@@ -121,6 +123,30 @@ func (m *metadataMgr) update() error {
 	err = m.buildVersionsHash()
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (m *metadataMgr) buildVersionsHash() error {
+	// Reset flat hash
+	m.flatCToGo = make(map[string][]string)
+	m.flatGoToC = make(map[string]string)
+
+	allCachedMetadata := m.allCachedMetadata()
+
+	for name, metadata := range allCachedMetadata {
+		versionMappings := metadata.VersionMappings
+		for _, versionMapping := range versionMappings {
+			// Build flat hash
+			cKey := flatKey(name, versionMapping.CVersion)
+			m.flatCToGo[cKey] = versionMapping.GoVersions
+
+			for _, goVersion := range versionMapping.GoVersions {
+				goKey := flatKey(name, goVersion)
+				m.flatGoToC[goKey] = versionMapping.CVersion
+			}
+		}
 	}
 
 	return nil

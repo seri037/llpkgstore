@@ -6,168 +6,183 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-// LatestMappedModuleVersion returns the latest mapped module version according to the C version
-func (m *metadataMgr) LatestMappedModuleVersion(name, cversion string) (string, error) {
-	cToGoVersions, ok := m.cToGoVersionsMaps[name]
-	if !ok {
-		return "", fmt.Errorf("no version mappings for %s", name)
+// Gets the latest C version associated with the latest Go version
+func (m *metadataMgr) LatestCVer(name string) (string, error) {
+	latestGoVersion, err := m.LatestGoVer(name)
+	if err != nil {
+		return "", err
 	}
 
-	goVersions, ok := cToGoVersions[cversion]
+	latestCVersion, err := m.CVerFromGoVer(name, latestGoVersion)
+	if err != nil {
+		return "", err
+	}
+
+	return latestCVersion, nil
+}
+
+// Gets the latest Go version for the given module name
+func (m *metadataMgr) LatestGoVer(name string) (string, error) {
+	allGoVersions, err := m.AllGoVersFromName(name)
+	if err != nil {
+		return "", err
+	}
+
+	if len(allGoVersions) == 0 {
+		return "", fmt.Errorf("no Go versions found for %s", name)
+	}
+
+	semver.Sort(allGoVersions)
+	latestGoVersion := allGoVersions[len(allGoVersions)-1]
+
+	return latestGoVersion, nil
+}
+
+// Gets the latest Go version based on the module name and C version
+func (m *metadataMgr) LatestGoVerFromCVer(name, cVer string) (string, error) {
+	// Build the flat key
+	cKey := flatKey(name, cVer)
+
+	// Search for the latest Go version
+	goVersions, ok := m.flatCToGo[cKey]
 	if !ok {
-		return "", fmt.Errorf("no version mappings for %s %s", name, cversion)
+		// Try to update if not found
+		err := m.update()
+		if err != nil {
+			return "", err
+		}
+
+		// Try again
+		goVersions, ok = m.flatCToGo[cKey]
+		if !ok {
+			return "", fmt.Errorf("no version mappings for %s %s", name, cVer)
+		}
 	}
 
 	if len(goVersions) > 0 {
-		lastestGoVersion := goVersions[0]
-		for _, goVersion := range goVersions {
-			if semver.Compare(goVersion, lastestGoVersion) > 0 {
-				lastestGoVersion = goVersion
-			}
+		semver.Sort(goVersions)
+		latestGoVersion := goVersions[len(goVersions)-1]
+
+		return latestGoVersion, nil
+	}
+
+	return "", fmt.Errorf("no version mappings for %s %s", name, cVer)
+}
+
+// Gets Go versions based on the module name and C version
+func (m *metadataMgr) GoVersFromCVer(name, cVer string) ([]string, error) {
+	// Build the flat key
+	cKey := flatKey(name, cVer)
+
+	// Search for the Go versions
+	versions, ok := m.flatCToGo[cKey]
+	if !ok {
+		// Try to update if not found
+		err := m.update()
+		if err != nil {
+			return nil, err
 		}
-		return lastestGoVersion, nil
+
+		// Try again
+		versions, ok = m.flatCToGo[cKey]
+		if !ok {
+			return nil, fmt.Errorf("no version mappings for %s %s", name, cVer)
+		}
 	}
 
-	return "", fmt.Errorf("no version mappings for %s %s", name, cversion)
+	// Return a copy
+	result := make([]string, len(versions))
+	copy(result, versions)
+
+	return result, nil
 }
 
-// MappedModuleVersions returns all mapped module versions according to the C version
-func (m *metadataMgr) MappedModuleVersions(name, cversion string) ([]string, error) {
-	cToGoVersions, ok := m.cToGoVersionsMaps[name]
+// Gets the C version based on the module name and Go version
+func (m *metadataMgr) CVerFromGoVer(name, goVer string) (string, error) {
+	// Build the flat key
+	goKey := flatKey(name, goVer)
+
+	// Search for the C version in the cached flat hash
+	cVersion, ok := m.flatGoToC[goKey]
 	if !ok {
-		return nil, fmt.Errorf("no version mappings for %s", name)
+		// Update if not found
+		err := m.update()
+		if err != nil {
+			return "", err
+		}
+
+		// Try again
+		cVersion, ok = m.flatGoToC[goKey]
+		if !ok {
+			return "", fmt.Errorf("no C version found for %s %s", name, goVer)
+		}
 	}
 
-	versions, ok := cToGoVersions[cversion]
-	if !ok {
-		return nil, fmt.Errorf("no version mappings for %s %s", name, cversion)
-	}
-
-	return versions, nil
+	return cVersion, nil
 }
 
-// AllCToGoVersions returns all version mappings in the format of Name -> CVersion -> GoVersions
-func (m *metadataMgr) AllCToGoVersions() (map[string]map[string][]string, error) {
-	err := m.update()
+// Gets all Go versions for the given module name
+func (m *metadataMgr) AllGoVersFromName(name string) ([]string, error) {
+	// Get the version mappings for the module
+	versionMappings, err := m.AllVersionMappingsFromName(name)
 	if err != nil {
 		return nil, err
 	}
-	return m.cToGoVersionsMaps, nil
+
+	// Extract Go versions
+	goVersions := make([]string, 0, len(versionMappings))
+	for _, mapping := range versionMappings {
+		for _, goVersion := range mapping.GoVersions {
+			goVersions = append(goVersions, goVersion)
+		}
+	}
+
+	return goVersions, nil
 }
 
-// AllGoToCVersion returns all version mappings in the format of Name -> GoVersion -> CVersion
-func (m *metadataMgr) AllGoToCVersion() (map[string]map[string]string, error) {
-	err := m.update()
+// Gets all C versions for the given module name
+func (m *metadataMgr) AllCVersFromName(name string) ([]string, error) {
+	// Get the version mappings for the module
+	versionMappings, err := m.AllVersionMappingsFromName(name)
 	if err != nil {
 		return nil, err
 	}
-	return m.goToCVersionMaps, nil
+
+	// Extract C versions
+	cVersions := make([]string, 0, len(versionMappings))
+	for _, mapping := range versionMappings {
+		cVersions = append(cVersions, mapping.CVersion)
+	}
+
+	return cVersions, nil
 }
 
-// CToGoVersionsByName returns a module's C-to-Go mappings
-func (m *metadataMgr) CToGoVersionsByName(name string) (map[string][]string, error) {
-	// First try to find the version mappings in the cache
-	cToGoVersions, ok := m.cToGoVersionsMaps[name]
+// Returns the original version mappings for the module name
+func (m *metadataMgr) AllVersionMappingsFromName(name string) ([]VersionMapping, error) {
+	// First try to find the metadata in the cache
+	metadata, ok := m.allCachedMetadata()[name]
 	if !ok {
-		// If the version mappings are not in the cache, update the cache
+		// If the metadata are not in the cache, update the cache
 		err := m.update()
 		if err != nil {
 			return nil, err
 		}
 
 		// Find the version mappings again
-		cToGoVersions, ok = m.cToGoVersionsMaps[name]
+		metadata, ok = m.allCachedMetadata()[name]
 		if !ok {
 			return nil, ErrMetadataNotInCache
 		}
 	}
 
-	return cToGoVersions, nil
-}
-
-// GoToCVersionByName returns a module's Go-to-C mappings
-func (m *metadataMgr) GoToCVersionByName(name string) (map[string]string, error) {
-	// First try to find the version mappings in the cache
-	goToCVersion, ok := m.goToCVersionMaps[name]
-	if !ok {
-		// If the version mappings are not in the cache, update the cache
-		err := m.update()
-		if err != nil {
-			return nil, err
-		}
-
-		// Find the version mappings again
-		goToCVersion, ok = m.goToCVersionMaps[name]
-		if !ok {
-			return nil, ErrMetadataNotInCache
-		}
-	}
-
-	return goToCVersion, nil
-}
-
-// AllVersionMappings returns all up-to-date version mappings in a primitive format
-func (m *metadataMgr) AllVersionMappings() (map[string][]VersionMapping, error) {
-	err := m.update()
-	if err != nil {
-		return nil, err
-	}
-
-	return m.allCachedVersionMappings(), nil
-}
-
-// VersionMappingsByName returns a module's version mappings in a primitive format
-func (m *metadataMgr) VersionMappingsByName(name string) ([]VersionMapping, error) {
-	// First try to find the version mappings in the cache
-	versionMappings, ok := m.allCachedVersionMappings()[name]
-	if !ok {
-		// If the version mappings are not in the cache, update the cache
-		err := m.update()
-		if err != nil {
-			return nil, err
-		}
-
-		// Find the version mappings again
-		versionMappings, ok = m.allCachedVersionMappings()[name]
-		if !ok {
-			return nil, ErrMetadataNotInCache
-		}
-	}
+	// Return a copy to avoid modifying the internal data
+	versionMappings := make([]VersionMapping, len(metadata.VersionMappings))
+	copy(versionMappings, metadata.VersionMappings)
 
 	return versionMappings, nil
 }
 
-func (m *metadataMgr) allCachedVersionMappings() map[string][]VersionMapping {
-	allCachedMetadata := m.allCachedMetadata()
-
-	allVersionMappings := map[string][]VersionMapping{}
-	for name, info := range allCachedMetadata {
-		allVersionMappings[name] = info.VersionMappings
-	}
-
-	return allVersionMappings
-}
-
-func (m *metadataMgr) buildVersionsHash() error {
-	m.cToGoVersionsMaps = make(map[string]map[string][]string)
-	m.goToCVersionMaps = make(map[string]map[string]string)
-
-	allCachedVersionMappings := m.allCachedVersionMappings()
-
-	for name, versionMappings := range allCachedVersionMappings {
-		if m.cToGoVersionsMaps[name] == nil {
-			m.cToGoVersionsMaps[name] = make(map[string][]string)
-		}
-		if m.goToCVersionMaps[name] == nil {
-			m.goToCVersionMaps[name] = make(map[string]string)
-		}
-		for _, versionMapping := range versionMappings {
-			m.cToGoVersionsMaps[name][versionMapping.CVersion] = versionMapping.GoVersions
-			for _, goVersion := range versionMapping.GoVersions {
-				m.goToCVersionMaps[name][goVersion] = versionMapping.CVersion
-			}
-		}
-	}
-
-	return nil
+// Build the flat key for query
+func flatKey(name, version string) string {
+	return fmt.Sprintf("%s/%s", name, version)
 }
