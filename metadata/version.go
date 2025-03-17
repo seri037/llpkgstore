@@ -6,32 +6,23 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-// LatestCVer 通过 clibName 获取最新的 C 版本
+// Gets the latest C version associated with the latest Go version
 func (m *metadataMgr) LatestCVer(name string) (string, error) {
-	// 获取该模块的所有版本映射
-	versionMappings, err := m.VersionMappingsByName(name)
+	latestGoVersion, err := m.LatestGoVer(name)
 	if err != nil {
 		return "", err
 	}
 
-	if len(versionMappings) == 0 {
-		return "", fmt.Errorf("no version mappings for %s", name)
-	}
-
-	// 查找最新的 C 版本（假设所有 C 版本都遵循语义版本格式）
-	latestCVersion := versionMappings[0].CVersion
-	for _, mapping := range versionMappings {
-		if semver.Compare(ensureSemverPrefix(mapping.CVersion), ensureSemverPrefix(latestCVersion)) > 0 {
-			latestCVersion = mapping.CVersion
-		}
+	latestCVersion, err := m.CVerFromGoVer(name, latestGoVersion)
+	if err != nil {
+		return "", err
 	}
 
 	return latestCVersion, nil
 }
 
-// LatestGoVer 通过 clibName 获取最新的 Go 版本
+// Gets the latest Go version for the given module name
 func (m *metadataMgr) LatestGoVer(name string) (string, error) {
-	// 获取该模块的所有 Go 版本
 	allGoVersions, err := m.AllGoVersFromName(name)
 	if err != nil {
 		return "", err
@@ -41,32 +32,27 @@ func (m *metadataMgr) LatestGoVer(name string) (string, error) {
 		return "", fmt.Errorf("no Go versions found for %s", name)
 	}
 
-	// 查找最新的 Go 版本
-	latestGoVersion := allGoVersions[0]
-	for _, goVersion := range allGoVersions {
-		if semver.Compare(goVersion, latestGoVersion) > 0 {
-			latestGoVersion = goVersion
-		}
-	}
+	semver.Sort(allGoVersions)
+	latestGoVersion := allGoVersions[len(allGoVersions)-1]
 
 	return latestGoVersion, nil
 }
 
-// LatestGoVerFromCVer 通过 clibName 和 C 版本获取最新的 Go 版本
+// Gets the latest Go version based on the module name and C version
 func (m *metadataMgr) LatestGoVerFromCVer(name, cVer string) (string, error) {
-	// 使用扁平化结构进行查询 - 构建复合键
-	cKey := name + "/" + cVer
+	// Build the flat key
+	cKey := flatKey(name, cVer)
 
-	// 直接从扁平哈希表中获取Go版本列表
+	// Search for the latest Go version
 	goVersions, ok := m.flatCToGo[cKey]
 	if !ok {
-		// 如果没找到，尝试更新缓存
+		// Try to update if not found
 		err := m.update()
 		if err != nil {
 			return "", err
 		}
 
-		// 再次查询
+		// Try again
 		goVersions, ok = m.flatCToGo[cKey]
 		if !ok {
 			return "", fmt.Errorf("no version mappings for %s %s", name, cVer)
@@ -74,62 +60,58 @@ func (m *metadataMgr) LatestGoVerFromCVer(name, cVer string) (string, error) {
 	}
 
 	if len(goVersions) > 0 {
-		// 找出语义版本最高的Go版本
-		latestGoVersion := goVersions[0]
-		for _, goVersion := range goVersions {
-			if semver.Compare(goVersion, latestGoVersion) > 0 {
-				latestGoVersion = goVersion
-			}
-		}
+		semver.Sort(goVersions)
+		latestGoVersion := goVersions[len(goVersions)-1]
+
 		return latestGoVersion, nil
 	}
 
 	return "", fmt.Errorf("no version mappings for %s %s", name, cVer)
 }
 
-// GoVersFromCVer 通过 clibName 和 C 版本获取 Go 版本列表
+// Gets Go versions based on the module name and C version
 func (m *metadataMgr) GoVersFromCVer(name, cVer string) ([]string, error) {
-	// 使用扁平化结构进行查询 - 构建复合键
-	cKey := name + "/" + cVer
+	// Build the flat key
+	cKey := flatKey(name, cVer)
 
-	// 直接从扁平哈希表中获取Go版本列表
+	// Search for the Go versions
 	versions, ok := m.flatCToGo[cKey]
 	if !ok {
-		// 如果没找到，尝试更新缓存
+		// Try to update if not found
 		err := m.update()
 		if err != nil {
 			return nil, err
 		}
 
-		// 再次查询
+		// Try again
 		versions, ok = m.flatCToGo[cKey]
 		if !ok {
 			return nil, fmt.Errorf("no version mappings for %s %s", name, cVer)
 		}
 	}
 
-	// 返回副本避免修改内部数据
+	// Return a copy
 	result := make([]string, len(versions))
 	copy(result, versions)
 
 	return result, nil
 }
 
-// CVerFromGoVer 通过 clibName 和 Go 版本获取 C 版本
+// Gets the C version based on the module name and Go version
 func (m *metadataMgr) CVerFromGoVer(name, goVer string) (string, error) {
-	// 使用扁平化结构进行查询 - 构建复合键
-	goKey := name + "/" + goVer
+	// Build the flat key
+	goKey := flatKey(name, goVer)
 
-	// 直接从扁平哈希表中获取 C 版本
+	// Search for the C version in the cached flat hash
 	cVersion, ok := m.flatGoToC[goKey]
 	if !ok {
-		// 如果没找到，尝试更新缓存
+		// Update if not found
 		err := m.update()
 		if err != nil {
 			return "", err
 		}
 
-		// 再次查询
+		// Try again
 		cVersion, ok = m.flatGoToC[goKey]
 		if !ok {
 			return "", fmt.Errorf("no C version found for %s %s", name, goVer)
@@ -139,40 +121,34 @@ func (m *metadataMgr) CVerFromGoVer(name, goVer string) (string, error) {
 	return cVersion, nil
 }
 
-// AllGoVersFromName 通过 clibName 获取 Go 所有的版本列表
+// Gets all Go versions for the given module name
 func (m *metadataMgr) AllGoVersFromName(name string) ([]string, error) {
-	// 获取该模块的所有版本映射
-	versionMappings, err := m.VersionMappingsByName(name)
+	// Get the version mappings for the module
+	versionMappings, err := m.AllVersionMappingsFromName(name)
 	if err != nil {
 		return nil, err
 	}
 
-	// 使用 map 来去重
-	goVersionsMap := make(map[string]struct{})
+	// Extract Go versions
+	goVersions := make([]string, 0, len(versionMappings))
 	for _, mapping := range versionMappings {
-		for _, goVer := range mapping.GoVersions {
-			goVersionsMap[goVer] = struct{}{}
+		for _, goVersion := range mapping.GoVersions {
+			goVersions = append(goVersions, goVersion)
 		}
-	}
-
-	// 从 map 转换回切片
-	goVersions := make([]string, 0, len(goVersionsMap))
-	for goVer := range goVersionsMap {
-		goVersions = append(goVersions, goVer)
 	}
 
 	return goVersions, nil
 }
 
-// AllCVersFromName 通过 clibName 获取 C 所有的版本列表
+// Gets all C versions for the given module name
 func (m *metadataMgr) AllCVersFromName(name string) ([]string, error) {
-	// 获取该模块的所有版本映射
-	versionMappings, err := m.VersionMappingsByName(name)
+	// Get the version mappings for the module
+	versionMappings, err := m.AllVersionMappingsFromName(name)
 	if err != nil {
 		return nil, err
 	}
 
-	// 提取所有唯一的 C 版本
+	// Extract C versions
 	cVersions := make([]string, 0, len(versionMappings))
 	for _, mapping := range versionMappings {
 		cVersions = append(cVersions, mapping.CVersion)
@@ -181,48 +157,32 @@ func (m *metadataMgr) AllCVersFromName(name string) ([]string, error) {
 	return cVersions, nil
 }
 
-// AllVersionMappingsFromName 返回原始的版本映射
+// Returns the original version mappings for the module name
 func (m *metadataMgr) AllVersionMappingsFromName(name string) ([]VersionMapping, error) {
-	// 重用现有的 VersionMappingsByName 方法
-	return m.VersionMappingsByName(name)
-}
-
-// VersionMappingsByName returns a module's version mappings in a primitive format
-func (m *metadataMgr) VersionMappingsByName(name string) ([]VersionMapping, error) {
-	// First try to find the version mappings in the cache
-	versionMappings, ok := m.allCachedVersionMappings()[name]
+	// First try to find the metadata in the cache
+	metadata, ok := m.allCachedMetadata()[name]
 	if !ok {
-		// If the version mappings are not in the cache, update the cache
+		// If the metadata are not in the cache, update the cache
 		err := m.update()
 		if err != nil {
 			return nil, err
 		}
 
 		// Find the version mappings again
-		versionMappings, ok = m.allCachedVersionMappings()[name]
+		metadata, ok = m.allCachedMetadata()[name]
 		if !ok {
 			return nil, ErrMetadataNotInCache
 		}
 	}
 
+	// Return a copy to avoid modifying the internal data
+	versionMappings := make([]VersionMapping, len(metadata.VersionMappings))
+	copy(versionMappings, metadata.VersionMappings)
+
 	return versionMappings, nil
 }
 
-func (m *metadataMgr) allCachedVersionMappings() map[string][]VersionMapping {
-	allCachedMetadata := m.allCachedMetadata()
-
-	allVersionMappings := map[string][]VersionMapping{}
-	for name, info := range allCachedMetadata {
-		allVersionMappings[name] = info.VersionMappings
-	}
-
-	return allVersionMappings
-}
-
-// 辅助函数，确保语义版本号有前缀 "v"
-func ensureSemverPrefix(version string) string {
-	if len(version) > 0 && version[0] != 'v' {
-		return "v" + version
-	}
-	return version
+// Build the flat key for query
+func flatKey(name, version string) string {
+	return fmt.Sprintf("%s/%s", name, version)
 }

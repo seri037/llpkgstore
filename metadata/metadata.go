@@ -28,7 +28,7 @@ type VersionMapping struct {
 type metadataMgr struct {
 	cache *cache.Cache[MetadataMap]
 
-	// 新增扁平结构用于优化查询
+	// Add flat hash for optimization
 	flatCToGo map[string][]string // "name/cversion" -> []goversion
 	flatGoToC map[string]string   // "name/goversion" -> cversion
 }
@@ -129,22 +129,21 @@ func (m *metadataMgr) update() error {
 }
 
 func (m *metadataMgr) buildVersionsHash() error {
-	// 重置扁平哈希表
+	// Reset flat hash
 	m.flatCToGo = make(map[string][]string)
 	m.flatGoToC = make(map[string]string)
 
-	allCachedVersionMappings := m.allCachedVersionMappings()
+	allCachedMetadata := m.allCachedMetadata()
 
-	for name, versionMappings := range allCachedVersionMappings {
-
+	for name, metadata := range allCachedMetadata {
+		versionMappings := metadata.VersionMappings
 		for _, versionMapping := range versionMappings {
-
-			// 构建扁平结构 (用于优化查询)
-			cKey := name + "/" + versionMapping.CVersion
+			// Build flat hash
+			cKey := flatKey(name, versionMapping.CVersion)
 			m.flatCToGo[cKey] = versionMapping.GoVersions
 
 			for _, goVersion := range versionMapping.GoVersions {
-				goKey := name + "/" + goVersion
+				goKey := flatKey(name, goVersion)
 				m.flatGoToC[goKey] = versionMapping.CVersion
 			}
 		}

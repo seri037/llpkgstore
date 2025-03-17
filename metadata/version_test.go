@@ -197,20 +197,3 @@ func TestAllVersionMappingsFromName(t *testing.T) {
 	_, err = mgr.AllVersionMappingsFromName("non-existent-module")
 	assert.Error(t, err)
 }
-
-// TestEnsureSemverPrefix 测试辅助函数 ensureSemverPrefix
-func TestEnsureSemverPrefix(t *testing.T) {
-	testCases := []struct {
-		input    string
-		expected string
-	}{
-		{"1.0.0", "v1.0.0"},
-		{"v1.0.0", "v1.0.0"},
-		{"", ""},
-	}
-
-	for _, tc := range testCases {
-		result := ensureSemverPrefix(tc.input)
-		assert.Equal(t, tc.expected, result)
-	}
-}
