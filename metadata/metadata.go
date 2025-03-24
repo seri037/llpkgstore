@@ -4,10 +4,5 @@ package metadata
 type MetadataMap map[string]*Metadata
 
 type Metadata struct {
-	VersionMappings []*VersionMapping `json:"versions"`
-}
-
-type VersionMapping struct {
-	CVersion   string   `json:"c"`
-	GoVersions []string `json:"go"`
+	VersionMappings map[string][]string `json:"versions"` // c_ver -> module_vers
 }
