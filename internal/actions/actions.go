@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -22,7 +23,7 @@ var GitHubEvent = sync.OnceValue(parseGitHubEvent)
 
 // In our previous design, each platform should generate *_{OS}_{Arch}.go file
 // Feb 12th, this design revoked, still keep the code.
-// var currentSuffix = runtime.GOOS + "_" + runtime.GOARCH
+var currentSuffix = runtime.GOOS + "_" + runtime.GOARCH
 
 // must panics if the error is non-nil, halting execution
 func must(err error) {

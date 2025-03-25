@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/go-github/v69/github"
 	"github.com/goplus/llpkgstore/config"
+	"github.com/goplus/llpkgstore/internal/actions/file"
 	"github.com/goplus/llpkgstore/internal/actions/versions"
 )
 
@@ -20,7 +21,9 @@ const (
 	LabelPrefix         = "branch:"
 	BranchPrefix        = "release-branch."
 	MappedVersionPrefix = "Release-as: "
-	regexString         = `Release-as:\s%s/v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?`
+
+	defaultReleaseBranch = "main"
+	regexString          = `Release-as:\s%s/v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?`
 )
 
 // regex compiles a regular expression pattern to detect "Release-as" directives in commit messages
@@ -35,6 +38,10 @@ func regex(packageName string) *regexp.Regexp {
 	// format: Release-as: clib/semver(with v prefix)
 	// Must have one space in the end of Release-as:
 	return regexp.MustCompile(fmt.Sprintf(regexString, packageName))
+}
+
+func binaryZip(packageName string) string {
+	return fmt.Sprintf("%s_%s.zip", packageName, currentSuffix)
 }
 
 // DefaultClient provides GitHub API client capabilities with authentication for Actions workflows
@@ -98,9 +105,7 @@ func (d *DefaultClient) associatedWithPullRequest(sha string) []*github.PullRequ
 	pulls, _, err := d.client.PullRequests.ListPullRequestsWithCommit(
 		ctx, d.owner, d.repo, sha, &github.ListOptions{},
 	)
-	if err != nil {
-		panic(err)
-	}
+	must(err)
 	return pulls
 }
 
@@ -162,9 +167,7 @@ func (d *DefaultClient) currentPRCommit() []*github.RepositoryCommit {
 		ctx, d.owner, d.repo, prNumber,
 		&github.ListOptions{},
 	)
-	if err != nil {
-		panic(err)
-	}
+	must(err)
 	return commits
 }
 
@@ -180,9 +183,7 @@ func (d *DefaultClient) allCommits() []*github.RepositoryCommit {
 		ctx, d.owner, d.repo,
 		&github.CommitsListOptions{},
 	)
-	if err != nil {
-		panic(err)
-	}
+	must(err)
 	return commits
 }
 
@@ -197,9 +198,7 @@ func (d *DefaultClient) removeLabel(labelName string) {
 	_, err := d.client.Issues.DeleteLabel(
 		ctx, d.owner, d.repo, labelName,
 	)
-	if err != nil {
-		panic(err)
-	}
+	must(err)
 }
 
 // checkMappedVersion validates PR contains valid "Release-as" version declaration
@@ -245,9 +244,7 @@ func (d *DefaultClient) commitMessage(sha string) *github.RepositoryCommit {
 	defer cancel()
 
 	commit, _, err := d.client.Repositories.GetCommit(ctx, d.owner, d.repo, sha, &github.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
+	must(err)
 	return commit
 }
 
@@ -321,6 +318,57 @@ func (d *DefaultClient) createBranch(branchName, sha string) error {
 			SHA: &sha,
 		},
 	})
+
+	return err
+}
+
+func (d *DefaultClient) createReleaseByTag(tag string) *github.RepositoryRelease {
+	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer cancel()
+
+	branch := defaultReleaseBranch
+
+	makeLatest := "true"
+	if _, isLegacy := d.isLegacyVersion(); isLegacy {
+		makeLatest = "legacy"
+	}
+	generateRelease := true
+
+	release, _, err := d.client.Repositories.CreateRelease(ctx, d.owner, d.repo, &github.RepositoryRelease{
+		TagName:              &tag,
+		TargetCommitish:      &branch,
+		Name:                 &tag,
+		MakeLatest:           &makeLatest,
+		GenerateReleaseNotes: &generateRelease,
+	})
+	must(err)
+
+	return release
+}
+
+func (d *DefaultClient) getReleaseByTag(tag string) *github.RepositoryRelease {
+	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer cancel()
+
+	release, _, err := d.client.Repositories.GetReleaseByTag(ctx, d.owner, d.repo, tag)
+	must(err)
+	// ok we get the relase entry
+	return release
+}
+
+func (d *DefaultClient) uploadFileToRelease(fileName string, release *github.RepositoryRelease) error {
+	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer cancel()
+
+	fs, err := os.Open(fileName)
+	must(err)
+	defer fs.Close()
+
+	_, _, err = d.client.Repositories.UploadReleaseAsset(
+		ctx, d.owner, d.repo, release.GetID(),
+		&github.UploadOptions{
+			Name: filepath.Base(fs.Name()),
+		}, fs)
 
 	return err
 }
@@ -416,9 +464,9 @@ func (d *DefaultClient) CheckPR() []string {
 	return allPaths
 }
 
-// Release handles version tagging and record updates after PR merge
+// Postprocessing handles version tagging and record updates after PR merge
 // Creates Git tags, updates version records, and cleans up legacy branches
-func (d *DefaultClient) Release() {
+func (d *DefaultClient) Postprocessing() {
 	// https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#push
 	sha := LatestCommitSHA()
 	// check it's associated with a pr
@@ -441,23 +489,58 @@ func (d *DefaultClient) Release() {
 		panic(err)
 	}
 
+	// create a release
+	d.createReleaseByTag(version)
+
 	clib, mappedVersion := parseMappedVersion(version)
 
 	// the pr has merged, so we can read it.
-	config, err := config.ParseLLPkgConfig(filepath.Join(clib, "llpkg.cfg"))
-	if err != nil {
-		panic(err)
-	}
+	cfg, err := config.ParseLLPkgConfig(filepath.Join(clib, "llpkg.cfg"))
+	must(err)
 
 	// write it to llpkgstore.json
 	ver := versions.Read("llpkgstore.json")
-	ver.Write(clib, config.Upstream.Package.Version, mappedVersion)
+	ver.Write(clib, cfg.Upstream.Package.Version, mappedVersion)
 
 	// we have finished tagging the commit, safe to remove the branch
 	if branchName, isLegacy := d.isLegacyVersion(); isLegacy {
 		d.removeBranch(branchName)
 	}
 	// move to website in Github Action...
+}
+
+func (d *DefaultClient) Release() {
+	version := d.mappedVersion()
+	// skip it when no mapped version is found
+	if version == "" {
+		panic("no mapped version found in the commit message")
+	}
+
+	clib, _ := parseMappedVersion(version)
+	// the pr has merged, so we can read it.
+	cfg, err := config.ParseLLPkgConfig(filepath.Join(clib, "llpkg.cfg"))
+	must(err)
+
+	uc, err := config.NewUpstreamFromConfig(cfg.Upstream)
+	must(err)
+
+	tempDir, _ := os.MkdirTemp("", "llpkg-tool")
+	path, err := uc.Installer.Install(uc.Pkg, tempDir)
+	must(err)
+
+	file.CopyFilePattern(tempDir, path, "*.pc")
+
+	zipFilePath, _ := filepath.Abs(binaryZip(uc.Pkg.Name))
+
+	err = file.Zip(path, zipFilePath)
+	must(err)
+
+	release := d.getReleaseByTag(version)
+
+	// upload file to release
+	err = d.uploadFileToRelease(zipFilePath, release)
+	must(err)
+
 }
 
 // CreateBranchFromLabel creates release branch based on label format
@@ -495,9 +578,8 @@ func (d *DefaultClient) CreateBranchFromLabel(labelName string) {
 		panic("c version dones't follow semver, skip maintaining.")
 	}
 
-	if err := d.createBranch(branchName, shaFromTag(version)); err != nil {
-		panic(err)
-	}
+	err := d.createBranch(branchName, shaFromTag(version))
+	must(err)
 }
 
 // CleanResource removes labels and resources after issue resolution
