@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/goplus/llpkgstore/config"
+	"github.com/goplus/llpkgstore/internal/actions/file"
 	"github.com/goplus/llpkgstore/internal/actions/generator/llcppg"
 	"github.com/spf13/cobra"
 )
@@ -26,13 +27,6 @@ func currentDir() string {
 	return dir
 }
 
-func removePattern(pattern string) {
-	matches, _ := filepath.Glob(pattern)
-	for _, match := range matches {
-		os.Remove(match)
-	}
-}
-
 func runLLCppgGenerateWithDir(dir string) {
 	cfg, err := config.ParseLLPkgConfig(filepath.Join(dir, LLGOModuleIdentifyFile))
 	if err != nil {
@@ -47,9 +41,6 @@ func runLLCppgGenerateWithDir(dir string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// we have to feed the pc to llcppg
-	os.Setenv("PKG_CONFIG_PATH", dir)
-
 	// try llcppcfg if llcppg.cfg dones't exist
 	if _, err := os.Stat(filepath.Join(dir, "llcppg.cfg")); os.IsNotExist(err) {
 		cmd := exec.Command("llcppcfg", uc.Pkg.Name)
@@ -67,8 +58,8 @@ func runLLCppgGenerateWithDir(dir string) {
 		log.Fatal(err)
 	}
 
-	removePattern("*.sh")
-	removePattern("*.bat")
+	file.RemovePattern("*.sh")
+	file.RemovePattern("*.bat")
 }
 
 func runLLCppgGenerate(_ *cobra.Command, args []string) {

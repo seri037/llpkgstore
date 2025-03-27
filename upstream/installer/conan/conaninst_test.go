@@ -9,6 +9,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/goplus/llpkgstore/internal/actions/pc"
 	"github.com/goplus/llpkgstore/upstream"
 )
 
@@ -115,12 +116,14 @@ func verify(installDir, pkgConfigName string) error {
 	if err != nil {
 		return errors.New(".pc file does not exist: " + err.Error())
 	}
-
+	absPath, err := filepath.Abs(installDir)
+	if err != nil {
+		return err
+	}
 	// 2. ensure pkg-config can find .pc file
-	os.Setenv("PKG_CONFIG_PATH", installDir)
-	defer os.Unsetenv("PKG_CONFIG_PATH")
-
 	buildCmd := exec.Command("pkg-config", "--cflags", pkgConfigName)
+
+	pc.SetPath(buildCmd, absPath)
 	out, err := buildCmd.CombinedOutput()
 	if err != nil {
 		return errors.New("pkg-config failed: " + err.Error() + " with output: " + string(out))
