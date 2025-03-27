@@ -16,8 +16,7 @@ import (
 type Versions struct {
 	metadata.MetadataMap
 
-	fileName    string
-	cVerToGoVer map[string]*cVerMap
+	fileName string
 }
 
 // appendVersion appends a version to an array, panic if the specified version has already existed.
@@ -48,93 +47,91 @@ func Read(fileName string) *Versions {
 		json.Unmarshal(b, &m)
 	}
 
-	v := &Versions{
+	return &Versions{
 		MetadataMap: m,
 		fileName:    f.Name(),
-		cVerToGoVer: map[string]*cVerMap{},
-	}
-	v.build()
-	return v
-}
-
-// build constructs the cVerToGoVer map from the metadata
-func (v *Versions) build() {
-	// O(n)
-	for clib := range v.MetadataMap {
-		cverMap := newCverMap()
-
-		versions := v.MetadataMap[clib]
-		for _, version := range versions.VersionMappings {
-			cverMap.Set(version)
-		}
-
-		v.cVerToGoVer[clib] = cverMap
 	}
 }
 
-// queryClibVersion finds or creates a VersionMapping for the given C library and version
-func (v *Versions) queryClibVersion(clib, clibVersion string) (versions *metadata.VersionMapping, needCreate bool) {
-	versions = v.cVerToGoVer[clib].Get(clibVersion)
-	// fast-path: we have a cache
-	if versions != nil {
+func (v *Versions) cVersions(clib string) (ret []string) {
+	versions := v.MetadataMap[clib]
+	if versions == nil {
 		return
 	}
-	needCreate = true
-	// we find noting, make a blank one.
-	versions = &metadata.VersionMapping{CVersion: clibVersion}
+	for version := range versions.Versions {
+		ret = append(ret, version)
+	}
 	return
 }
 
-func (v *Versions) CVersions(clib string) []string {
-	return v.cVerToGoVer[clib].Versions()
+func (v *Versions) CVersions(clib string) (ret []string) {
+	versions := v.MetadataMap[clib]
+	if versions == nil {
+		return
+	}
+	for version := range versions.Versions {
+		ret = append(ret, ToSemVer(version))
+	}
+	return
 }
 
-func (v *Versions) GoVersions(clib string) []string {
-	return v.cVerToGoVer[clib].GoVersions()
+func (v *Versions) GoVersions(clib string) (ret []string) {
+	versions := v.MetadataMap[clib]
+	if versions == nil {
+		return
+	}
+	for _, goversion := range versions.Versions {
+		ret = append(ret, goversion...)
+	}
+	return
 }
 
 func (v *Versions) LatestGoVersionForCVersion(clib, cver string) string {
-	return v.cVerToGoVer[clib].LatestGoVersionForCVersion(cver)
+	version := v.MetadataMap[clib]
+	if version == nil {
+		return ""
+	}
+	goVersions := version.Versions[cver]
+	if len(goVersions) == 0 {
+		return ""
+	}
+	semver.Sort(goVersions)
+	return goVersions[len(goVersions)-1]
 }
 
 func (v *Versions) SearchBySemVer(clib, semver string) string {
-	return v.cVerToGoVer[clib].SearchBySemVer(semver)
+	for _, version := range v.cVersions(clib) {
+		if ToSemVer(version) == semver {
+			return version
+		}
+	}
+	return ""
 }
 
 // LatestGoVersion returns the latest Go version associated with the given C library
 func (v *Versions) LatestGoVersion(clib string) string {
-	clibVer := v.cVerToGoVer[clib].LatestGoVersion()
-	log.Println(clibVer)
-	if clibVer != "" {
-		return clibVer
-	}
-	allVersions := v.MetadataMap[clib]
-	if allVersions == nil {
+	versions := v.GoVersions(clib)
+	if len(versions) == 0 {
 		return ""
 	}
-	var tmp []string
-	for _, verions := range allVersions.VersionMappings {
-		tmp = append(tmp, verions.GoVersions...)
-	}
-	if len(tmp) == 0 {
-		return ""
-	}
-	semver.Sort(tmp)
-	return tmp[len(tmp)-1]
+	semver.Sort(versions)
+	return versions[len(versions)-1]
 }
 
 // Write records a new Go version mapping for a C library version and persists to file
 func (v *Versions) Write(clib, clibVersion, mappedVersion string) {
-	versions, needCreate := v.queryClibVersion(clib, clibVersion)
-
-	versions.GoVersions = appendVersion(versions.GoVersions, mappedVersion)
-
-	if needCreate {
-		if v.MetadataMap[clib] == nil {
-			v.MetadataMap[clib] = &metadata.Metadata{}
+	clibVersions := v.MetadataMap[clib]
+	if clibVersions == nil {
+		clibVersions = &metadata.Metadata{
+			Versions: map[metadata.CVersion][]metadata.GoVersion{},
 		}
-		v.MetadataMap[clib].VersionMappings = append(v.MetadataMap[clib].VersionMappings, versions)
+		v.MetadataMap[clib] = clibVersions
 	}
+	versions := clibVersions.Versions[clibVersion]
+
+	versions = appendVersion(versions, mappedVersion)
+
+	clibVersions.Versions[clibVersion] = versions
 	// sync to disk
 	b, _ := json.Marshal(&v.MetadataMap)
 

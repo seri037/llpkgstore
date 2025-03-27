@@ -10,14 +10,10 @@ import (
 func TestCVersions(t *testing.T) {
 	b := []byte(`{
 		"cgood": {
-			"versions" : [{
-				"c": "1.3",
-				"go": ["v0.1.0", "v0.1.1"]
-			},
-			{
-				"c": "1.3.1",
-				"go": ["v1.1.0"]
-			}]
+			"versions" : {
+				"1.3": ["v0.1.0", "v0.1.1"],
+				"1.3.1": ["v1.1.0"]
+			}
 		}
 	}`)
 	path := "ttt.json"
@@ -51,14 +47,10 @@ func TestCVersions(t *testing.T) {
 func TestLatestVersion(t *testing.T) {
 	b := []byte(`{
     "cgood": {
-        "versions" : [{
-            "c": "1.3",
-            "go": ["v0.1.0", "v0.1.1"]
-        },
-        {
-            "c": "1.3.1",
-            "go": ["v1.1.0"]
-        }]
+        "versions" : {
+				"1.3": ["v0.1.0", "v0.1.1"],
+				"1.3.1": ["v1.1.0"]
+		}
     }
 }`)
 	path := "ttt.json"
@@ -94,7 +86,7 @@ func TestAppend(t *testing.T) {
 
 	b, _ := os.ReadFile("llpkgstore.json")
 
-	if !bytes.Equal(b, []byte(`{"cjson":{"versions":[{"c":"1.7.18","go":["v1.0.0","v1.0.1"]},{"c":"1.7.19","go":["v1.0.2"]}]},"libxml":{"versions":[{"c":"1.45.1.4","go":["v1.0.0"]},{"c":"1.45.1.5","go":["v1.0.1"]}]}}`)) {
+	if !bytes.Equal(b, []byte(`{"cjson":{"versions":{"1.7.18":["v1.0.0","v1.0.1"],"1.7.19":["v1.0.2"]}},"libxml":{"versions":{"1.45.1.4":["v1.0.0"],"1.45.1.5":["v1.0.1"]}}}`)) {
 		t.Error("unexpected append result")
 	}
 }
