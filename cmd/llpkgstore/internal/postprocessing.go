@@ -13,7 +13,7 @@ var postProcessingCmd = &cobra.Command{
 }
 
 func runPostProcessingCmd(_ *cobra.Command, _ []string) {
-	actions.NewDefaultClient().Release()
+	actions.NewDefaultClient().Postprocessing()
 }
 
 func init() {

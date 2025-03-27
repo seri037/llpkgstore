@@ -12,6 +12,7 @@ import (
 	"github.com/goplus/llpkgstore/internal/actions/file"
 	"github.com/goplus/llpkgstore/internal/actions/generator"
 	"github.com/goplus/llpkgstore/internal/actions/hashutils"
+	"github.com/goplus/llpkgstore/internal/actions/pc"
 )
 
 var (
@@ -44,13 +45,11 @@ func canHash(fileName string) bool {
 }
 
 // lockGoVersion locks current Go version to `llcppgGoVersion` via GOTOOLCHAIN
-func lockGoVersion() {
-	exec.Command("go", "env", "-w", fmt.Sprintf("GOTOOLCHAIN=go%s", llcppgGoVersion)).Run()
-}
-
-// lockGoVersion reset current Go version to `llcppgGoVersion`
-func unlockGoVersion() {
-	exec.Command("go", "env", "-w", "GOTOOLCHAIN=auto").Run()
+func lockGoVersion(cmd *exec.Cmd, pcPath string) {
+	// don't change global settings, use temporary environment.
+	// see issue: https://github.com/goplus/llpkgstore/issues/18
+	pc.SetPath(cmd, pcPath)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GOTOOLCHAIN=go%s", llcppgGoVersion))
 }
 
 // diffTwoFiles returns the diff result between a file and b file.
@@ -115,9 +114,6 @@ func (l *llcppgGenerator) copyConfigFileTo(path string) error {
 }
 
 func (l *llcppgGenerator) Generate(toDir string) error {
-	lockGoVersion()
-	defer unlockGoVersion()
-
 	path, err := filepath.Abs(toDir)
 	if err != nil {
 		return errors.Join(ErrLlcppgGenerate, err)
@@ -127,10 +123,14 @@ func (l *llcppgGenerator) Generate(toDir string) error {
 	}
 	cmd := exec.Command("llcppg", llcppgConfigFile)
 	cmd.Dir = path
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	lockGoVersion(cmd, l.dir)
+
 	// llcppg may exit with an error, which may be caused by Stderr.
 	// To avoid that case, we have to check its exit code.
-	if output, err := cmd.CombinedOutput(); isExitedUnexpectedly(err) {
-		return errors.Join(ErrLlcppgGenerate, errors.New(string(output)))
+	if err := cmd.Run(); isExitedUnexpectedly(err) {
+		return errors.Join(ErrLlcppgGenerate, err)
 	}
 	// check output again
 	generatedPath := filepath.Join(path, l.packageName)
@@ -140,6 +140,8 @@ func (l *llcppgGenerator) Generate(toDir string) error {
 	// edit go.mod
 	cmd = exec.Command("go", "mod", "edit", "-module", l.normalizeModulePath())
 	cmd.Dir = generatedPath
+	lockGoVersion(cmd, l.dir)
+
 	cmd.Run()
 
 	// copy out the generated result

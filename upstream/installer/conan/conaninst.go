@@ -1,19 +1,20 @@
 package conan
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/goplus/llpkgstore/internal/actions/file"
+	"github.com/goplus/llpkgstore/internal/actions/pc"
 	"github.com/goplus/llpkgstore/internal/cmdbuilder"
 	"github.com/goplus/llpkgstore/upstream"
 )
 
 var (
-	prefixMatch        = regexp.MustCompile(`^prefix=(.*)`)
 	ErrPackageNotFound = errors.New("package not found")
 	ErrPCFileNotFound  = errors.New("pc file not found")
 )
@@ -31,22 +32,72 @@ const (
 )
 
 // in Conan, actual binary path is in the prefix field of *.pc file
-func (c *conanInstaller) findBinaryPathFromPC(pkg upstream.Package, dir string) (string, error) {
-	pcFile, err := os.ReadFile(filepath.Join(dir, pkg.Name+".pc"))
-	if err != nil {
-		return "", err
+func (c *conanInstaller) findBinaryPathFromPC(pkg upstream.Package, dir string, installOutput []byte) (string, string, error) {
+	var m map[string]any
+	json.Unmarshal(installOutput, &m)
+
+	if len(m) == 0 {
+		return "", "", ErrPackageNotFound
 	}
-	matches := prefixMatch.FindSubmatch(pcFile)
+
+	graphMap, ok := m["graph"].(map[string]any)
+	if !ok {
+		return "", "", ErrPackageNotFound
+	}
+
+	nodeMap, ok := graphMap["nodes"].(map[string]any)
+	if !ok {
+		return "", "", ErrPackageNotFound
+	}
+
+	var pkgConfigName string
+
+	for _, packageInfo := range nodeMap {
+		packageInfoMap := packageInfo.(map[string]any)
+
+		packageName, ok := packageInfoMap["name"].(string)
+
+		if ok && packageName == pkg.Name {
+			// ok this is the result we want
+			cppInfo, ok := packageInfoMap["cpp_info"].(map[string]any)
+			if !ok {
+				continue
+			}
+			root, ok := cppInfo["root"].(map[string]any)
+			if !ok {
+				continue
+			}
+			properties, ok := root["properties"].(map[string]any)
+			if !ok {
+				continue
+			}
+			name, ok := properties["pkg_config_name"].(string)
+			if !ok {
+				continue
+			}
+			pkgConfigName = name
+			break
+		}
+	}
+	if pkgConfigName == "" {
+		// if pkg-config name is not specified, default to package name.
+		pkgConfigName = pkg.Name
+	}
+	pcFile, err := os.ReadFile(filepath.Join(dir, pkgConfigName+".pc"))
+	if err != nil {
+		return "", "", err
+	}
+	matches := pc.PrefixMatch.FindSubmatch(pcFile)
 	if len(matches) != 2 {
-		return "", ErrPCFileNotFound
+		return "", "", ErrPCFileNotFound
 	}
 	binaryDir := string(matches[1])
 	// check dir
 	fs, err := os.Stat(binaryDir)
 	if err != nil || !fs.IsDir() {
-		return "", ErrPCFileNotFound
+		return "", "", ErrPCFileNotFound
 	}
-	return binaryDir, nil
+	return binaryDir, pkgConfigName, nil
 }
 
 // conanInstaller implements the upstream.Installer interface using the Conan package manager.
@@ -92,6 +143,7 @@ func (c *conanInstaller) Install(pkg upstream.Package, outputDir string) (string
 	builder.SetArg("generator", "PkgConfigDeps")
 	builder.SetArg("build", "missing")
 	builder.SetArg("output-folder", outputDir)
+	builder.SetArg("format", "json")
 
 	for _, opt := range c.options() {
 		builder.SetArg("options", opt)
@@ -99,17 +151,24 @@ func (c *conanInstaller) Install(pkg upstream.Package, outputDir string) (string
 
 	buildCmd := builder.Cmd()
 
-	out, err := buildCmd.CombinedOutput()
+	// conan will output install result to Stdout, output progress to Stderr
+	buildCmd.Stderr = os.Stderr
+	ret, err := buildCmd.Output()
 	if err != nil {
-		fmt.Println(string(out))
+		// fmt.Println(string(out))
+		return "", err
+	}
+	binaryDir, pkgConfigName, err := c.findBinaryPathFromPC(pkg, outputDir, ret)
+	if err != nil {
 		return "", err
 	}
 
-	binaryDir, err := c.findBinaryPathFromPC(pkg, outputDir)
+	err = file.CopyFS(outputDir, os.DirFS(binaryDir))
 	if err != nil {
 		return "", err
 	}
-	return binaryDir, nil
+
+	return pkgConfigName, nil
 }
 
 // Search checks Conan remote repository for the specified package availability.
