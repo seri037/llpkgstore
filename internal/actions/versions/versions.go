@@ -19,7 +19,12 @@ type Versions struct {
 	fileName string
 }
 
-// appendVersion appends a version to an array, panic if the specified version has already existed.
+// appendVersion adds a new version to the slice while preventing duplicates.
+// It panics if the element already exists in the array to enforce uniqueness constraints.
+// Parameters:
+//
+//	arr: Slice of versions to modify
+//	elem: Version to append
 func appendVersion(arr []string, elem string) []string {
 	if slices.Contains(arr, elem) {
 		log.Fatalf("version %s has already existed", elem)
@@ -27,7 +32,11 @@ func appendVersion(arr []string, elem string) []string {
 	return append(arr, elem)
 }
 
-// Read reads version mappings from a file and initializes the Versions struct
+// Read initializes a Versions struct by reading version mappings from a file.
+// It creates the file if it doesn't exist and parses the JSON content into the MetadataMap.
+// Parameters:
+//
+//	fileName: Path to the version mapping file
 func Read(fileName string) *Versions {
 	// read or create a file
 	f, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDONLY, 0644)
@@ -53,17 +62,18 @@ func Read(fileName string) *Versions {
 	}
 }
 
-func (v *Versions) cVersions(clib string) (ret []string) {
+// cVersions retrieves the version mappings for a specific C library.
+// It returns a map where keys are C library versions and values are supported Go versions.
+func (v *Versions) cVersions(clib string) map[metadata.CVersion][]metadata.GoVersion {
 	versions := v.MetadataMap[clib]
 	if versions == nil {
-		return
+		return nil
 	}
-	for version := range versions.Versions {
-		ret = append(ret, version)
-	}
-	return
+	return versions.Versions
 }
 
+// CVersions returns all available versions of the specified C library.
+// The versions are returned as semantic version strings.
 func (v *Versions) CVersions(clib string) (ret []string) {
 	versions := v.MetadataMap[clib]
 	if versions == nil {
@@ -75,6 +85,7 @@ func (v *Versions) CVersions(clib string) (ret []string) {
 	return
 }
 
+// GoVersions lists all Go versions associated with the given C library.
 func (v *Versions) GoVersions(clib string) (ret []string) {
 	versions := v.MetadataMap[clib]
 	if versions == nil {
@@ -86,6 +97,7 @@ func (v *Versions) GoVersions(clib string) (ret []string) {
 	return
 }
 
+// LatestGoVersionForCVersion finds the latest Go version compatible with a specific C library version.
 func (v *Versions) LatestGoVersionForCVersion(clib, cver string) string {
 	version := v.MetadataMap[clib]
 	if version == nil {
@@ -99,8 +111,9 @@ func (v *Versions) LatestGoVersionForCVersion(clib, cver string) string {
 	return goVersions[len(goVersions)-1]
 }
 
+// SearchBySemVer looks up a C library version by its semantic version string.
 func (v *Versions) SearchBySemVer(clib, semver string) string {
-	for _, version := range v.cVersions(clib) {
+	for version := range v.cVersions(clib) {
 		if ToSemVer(version) == semver {
 			return version
 		}
@@ -108,7 +121,8 @@ func (v *Versions) SearchBySemVer(clib, semver string) string {
 	return ""
 }
 
-// LatestGoVersion returns the latest Go version associated with the given C library
+// LatestGoVersion retrieves the latest Go version associated with the specified C library.
+// It aggregates all Go versions across all C library versions and returns the highest one based on semantic versioning.
 func (v *Versions) LatestGoVersion(clib string) string {
 	versions := v.GoVersions(clib)
 	if len(versions) == 0 {
@@ -118,7 +132,14 @@ func (v *Versions) LatestGoVersion(clib string) string {
 	return versions[len(versions)-1]
 }
 
-// Write records a new Go version mapping for a C library version and persists to file
+// Write records a new Go version mapping for a C library version and persists to file.
+// Parameters:
+//
+//	clib: The C library name.
+//	clibVersion: The specific version of the C library.
+//	mappedVersion: The Go version to map with the C library version.
+//
+// It appends the Go version to the existing list for the C library version and saves the updated metadata.
 func (v *Versions) Write(clib, clibVersion, mappedVersion string) {
 	clibVersions := v.MetadataMap[clib]
 	if clibVersions == nil {
@@ -138,6 +159,7 @@ func (v *Versions) Write(clib, clibVersion, mappedVersion string) {
 	os.WriteFile(v.fileName, []byte(b), 0644)
 }
 
+// String returns the JSON representation of the Versions metadata.
 func (v *Versions) String() string {
 	b, _ := json.Marshal(&v.MetadataMap)
 	return string(b)
