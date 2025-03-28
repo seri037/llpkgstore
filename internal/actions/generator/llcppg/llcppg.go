@@ -66,11 +66,12 @@ func isExitedUnexpectedly(err error) bool {
 // llcppgGenerator implements Generator interface, which use llcppg tool to generate llpkg.
 type llcppgGenerator struct {
 	dir         string // llcppg.cfg abs path
+	pcDir       string
 	packageName string
 }
 
-func New(dir, packageName string) generator.Generator {
-	return &llcppgGenerator{dir: dir, packageName: packageName}
+func New(dir, packageName, pcDir string) generator.Generator {
+	return &llcppgGenerator{dir: dir, packageName: packageName, pcDir: pcDir}
 }
 
 // normalizeModulePath returns a normalized module path like
@@ -121,11 +122,11 @@ func (l *llcppgGenerator) Generate(toDir string) error {
 	if err := l.copyConfigFileTo(path); err != nil {
 		return errors.Join(ErrLlcppgGenerate, err)
 	}
-	cmd := exec.Command("llcppg", llcppgConfigFile)
+	cmd := exec.Command("llcppg", "-mod", l.normalizeModulePath(), llcppgConfigFile)
 	cmd.Dir = path
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	lockGoVersion(cmd, l.dir)
+	lockGoVersion(cmd, l.pcDir)
 
 	// llcppg may exit with an error, which may be caused by Stderr.
 	// To avoid that case, we have to check its exit code.
@@ -137,15 +138,13 @@ func (l *llcppgGenerator) Generate(toDir string) error {
 	if _, err := os.Stat(generatedPath); os.IsNotExist(err) {
 		return errors.Join(ErrLlcppgCheck, errors.New("generate fail"))
 	}
-	// edit go.mod
-	cmd = exec.Command("go", "mod", "edit", "-module", l.normalizeModulePath())
-	cmd.Dir = generatedPath
-	lockGoVersion(cmd, l.dir)
-
-	cmd.Run()
-
 	// copy out the generated result
-	file.CopyFS(path, os.DirFS(generatedPath))
+	// be careful: llcppg result MUST not override existed file,
+	// otherwise, checking is meaningless.
+	err = file.CopyFS(path, os.DirFS(generatedPath), true)
+	if err != nil {
+		return errors.Join(ErrLlcppgGenerate, err)
+	}
 
 	os.RemoveAll(generatedPath)
 	return nil

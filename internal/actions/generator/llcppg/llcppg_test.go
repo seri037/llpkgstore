@@ -42,6 +42,10 @@ func checkGoMod(t *testing.T, file string) {
 	if f.Go.Version != "1.20" {
 		t.Errorf("unexpected version: got: %s", f.Go.Version)
 	}
+	if f.Module.Mod.Path != goplusRepo+"cjson" {
+		t.Errorf("unexpected module path: got: %s", f.Module.Mod.Path)
+
+	}
 }
 
 func TestHash(t *testing.T) {
@@ -86,7 +90,7 @@ func TestLlcppg(t *testing.T) {
 	os.Mkdir("testgenerate", 0777)
 	defer os.RemoveAll("testgenerate")
 	path, _ := filepath.Abs("testgenerate")
-	generator := New(path, "cjson")
+	generator := New(path, "cjson", path)
 
 	os.WriteFile("testgenerate/llcppg.cfg", []byte(testLlcppgConfig), 0755)
 	os.WriteFile("testgenerate/llpkg.cfg", []byte(testLLPkgConfig), 0755)
