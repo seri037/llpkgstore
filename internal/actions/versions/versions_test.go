@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"golang.org/x/mod/semver"
 )
 
 func TestCVersions(t *testing.T) {
@@ -25,13 +27,18 @@ func TestCVersions(t *testing.T) {
 	defer os.Remove(path)
 
 	v := Read(path)
+	goVersion := v.GoVersions("cgood")
+	semver.Sort(goVersion)
 
-	if !reflect.DeepEqual(v.GoVersions("cgood"), []string{"v0.1.0", "v0.1.1", "v1.1.0"}) {
-		t.Errorf("unexpected goversion: want: %v got: %v", []string{"v0.1.0", "v0.1.1", "v1.1.0"}, v.GoVersions("cgood"))
+	if !reflect.DeepEqual(goVersion, []string{"v0.1.0", "v0.1.1", "v1.1.0"}) {
+		t.Errorf("unexpected goversion: want: %v got: %v", []string{"v0.1.0", "v0.1.1", "v1.1.0"}, goVersion)
 	}
 
-	if !reflect.DeepEqual(v.CVersions("cgood"), []string{"v1.3.0", "v1.3.1"}) {
-		t.Errorf("unexpected cversion: want: %v got: %v", []string{"v1.3.0", "v1.3.1"}, v.CVersions("cgood"))
+	cVersion := v.CVersions("cgood")
+	semver.Sort(cVersion)
+
+	if !reflect.DeepEqual(cVersion, []string{"v1.3.0", "v1.3.1"}) {
+		t.Errorf("unexpected cversion: want: %v got: %v", []string{"v1.3.0", "v1.3.1"}, cVersion)
 	}
 
 	if v.LatestGoVersionForCVersion("cgood", "1.3") != "v0.1.1" {
