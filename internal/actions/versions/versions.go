@@ -82,6 +82,7 @@ func (v *Versions) CVersions(clib string) (ret []string) {
 	for version := range versions.Versions {
 		ret = append(ret, ToSemVer(version))
 	}
+	semver.Sort(ret)
 	return
 }
 

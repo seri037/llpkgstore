@@ -40,7 +40,10 @@ func TestCVersions(t *testing.T) {
 
 	if v.SearchBySemVer("cgood", "v1.3.0") != "1.3" {
 		t.Errorf("unexpected search by semver result: want: %v got: %v", "1.3", v.SearchBySemVer("cgood", "v1.3.0"))
+	}
 
+	if v.SearchBySemVer("agood", "v1.3.0") != "" {
+		t.Errorf("unexpected search by semver result: want: %v got: %v", "", v.SearchBySemVer("cgood", "v1.3.0"))
 	}
 }
 
